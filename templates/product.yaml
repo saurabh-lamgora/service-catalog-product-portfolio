@@ -1,0 +1,168 @@
+# Creates a Spoke VPC for Internal network. Supports various patterns through Conditions
+# Hardcoded to use 2AZs for POC showcase, can be extended
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: Spoke VPC for Internal Network
+
+
+Parameters:
+  Accountalias:
+    Description: Accountalias
+    Type: String
+  NumberOfAZs:
+    Description: Number of AZs to be used for this VPC (currently only 2 supported) # TO DO: Expand to 3 AZs
+    Type: Number
+    AllowedValues:
+      - 2
+    Default: 2
+
+  VPCCIDR:
+    Description: CIDR to be used for the spoke VPC. E.g. 10.0.1.0/24
+    Type: String
+
+  WorkloadSubnet1aCIDR:
+    Description: CIDR to be used for the WorkloadSubnet1a. E.g. 10.0.1.0/25
+    Type: String
+
+  WorkloadSubnet1bCIDR:
+    Description: CIDR to be used for the WorkloadSubnet1a. E.g. 10.0.1.128/25
+    Type: String
+
+  PrivateSubnetsEnabled:
+    Description: Private subnets are usually used for hosting workloads, for example backend of an app (this enables on-premises connectivity as well as outbound Internet connectivity, if firewall rules are correctly set up)
+    Type: String
+    Default: Enable
+    AllowedValues:
+      - Enable
+  VPCFlowLogsRetentionInDays:
+    Description: How many days is the maximum for storing the VPC flow logs in CloudWatch
+    Type: Number
+    Default: 14
+
+
+
+
+
+
+Resources:
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !Ref VPCCIDR
+      Tags:
+        - Key: Name
+          Value: !Sub ${Accountalias}-VPC
+
+
+  WorkloadSubnet1A:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref WorkloadSubnet1aCIDR
+      AvailabilityZone: !Select [ 0, "Fn::GetAZs" : "" ]
+      Tags:
+        - Key: Name
+          Value: !Sub ${Accountalias} Workload Subnet 1A
+  WorkloadSubnet1B:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref WorkloadSubnet1bCIDR
+      AvailabilityZone: !Select [ 1, "Fn::GetAZs" : "" ]
+      Tags:
+        - Key: Name
+          Value: !Sub ${Accountalias} Workload Subnet 1B
+
+  SpokeVPCTgwAttachment:
+    Type: AWS::EC2::TransitGatewayAttachment
+    Properties:
+      TransitGatewayId: tgw-0fa9b2f91d54e59ec
+      VpcId: !Ref VPC
+      SubnetIds:
+        - !Ref WorkloadSubnet1A
+        - !Ref WorkloadSubnet1B
+
+  WorkloadRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${Accountalias} Workload Route Table
+  WorkloadRouteTableMapA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref WorkloadRouteTable
+      SubnetId: !Ref WorkloadSubnet1A
+  WorkloadRouteTableMapB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref WorkloadRouteTable
+      SubnetId: !Ref WorkloadSubnet1B
+
+  WorkloadTransitGatewayDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: SpokeVPCTgwAttachment
+    Properties:
+      TransitGatewayId: tgw-0fa9b2f91d54e59ec
+      RouteTableId: !Ref WorkloadRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+  LogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      RetentionInDays: !Ref VPCFlowLogsRetentionInDays
+      LogGroupName: !Sub "${VPC}-flowlogs"
+  VPCFlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt VPCFlowLogsRole.Arn
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref LogGroup
+      ResourceId: !Ref VPC
+      ResourceType: VPC
+      TrafficType: ALL
+  VPCFlowLogsRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: 'vpc-flow-logs.amazonaws.com'
+          Action: 'sts:AssumeRole'
+      Policies:
+      - PolicyName: 'flowlogs-policy'
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'logs:CreateLogStream'
+            - 'logs:PutLogEvents'
+            - 'logs:DescribeLogGroups'
+            - 'logs:DescribeLogStreams'
+            Resource: !GetAtt 'LogGroup.Arn'
+
+
+Outputs:
+  VPCID:
+    Description: ID for VPC
+    Value:
+      Ref: VPC
+  WorkLoadSubnet1A:
+    Description: Id for Workload subnet 1a
+    Value:
+      Ref: WorkloadSubnet1A
+  WorkLoadSubnet1B:
+    Description: Id for Workload subnet 1b
+    Value:
+      Ref: WorkloadSubnet1B
+  VPCTgwAttachmentId:
+    Description: Id for the VPC Tgw attachment
+    Value:
+      Ref: SpokeVPCTgwAttachment
+

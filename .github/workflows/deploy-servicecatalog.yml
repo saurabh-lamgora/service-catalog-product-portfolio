@@ -1,0 +1,60 @@
+# .github/workflows/deploy-servicecatalog.yml
+
+name: Deploy Service Catalog Portfolio & Product
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-servicecatalog:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: eu-central-1
+      PORTFOLIO_NAME: "Testing-Portfolio"
+      PRODUCT_NAME: "TestingProduct"
+      PRODUCT_TEMPLATE_FILE: "templates/product.yaml"
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.IAM_ROLE }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Create Portfolio
+      id: create-portfolio
+      run: |
+        PORTFOLIO_ID=$(aws servicecatalog create-portfolio \
+          --display-name "${{ env.PORTFOLIO_NAME }}" \
+          --provider-name "GitHubCI" \
+          --query 'PortfolioDetail.Id' \
+          --output text)
+        echo "PORTFOLIO_ID=$PORTFOLIO_ID" >> $GITHUB_ENV
+
+    - name: Package Product Template
+      run: |
+        TEMPLATE_BODY=$(cat ${{ env.PRODUCT_TEMPLATE_FILE }} | base64 | tr -d '\n')
+        echo "TEMPLATE_BODY=$TEMPLATE_BODY" >> $GITHUB_ENV
+
+    - name: Create Product
+      id: create-product
+      run: |
+        PRODUCT_ID=$(aws servicecatalog create-product \
+          --name "${{ env.PRODUCT_NAME }}" \
+          --owner "GitHubCI" \
+          --product-type "CLOUD_FORMATION_TEMPLATE" \
+          --provisioning-artifact-parameters "Name=InitialVersion,Type=CLOUD_FORMATION_TEMPLATE,Info={\"LoadTemplateFromURL\":\"https://skf-service-catalog-templates.s3.eu-central-1.amazonaws.com/vpc-catalog/product.yaml\"}" \
+          --query 'ProductViewDetail.ProductViewSummary.ProductId' \
+          --output text)
+        echo "PRODUCT_ID=$PRODUCT_ID" >> $GITHUB_ENV
+
+    - name: Associate Product with Portfolio
+      run: |
+        aws servicecatalog associate-product-with-portfolio \
+          --product-id ${{ env.PRODUCT_ID }} \
+          --portfolio-id ${{ env.PORTFOLIO_ID }}
+

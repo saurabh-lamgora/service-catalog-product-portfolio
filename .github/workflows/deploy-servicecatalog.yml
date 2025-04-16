@@ -10,6 +10,8 @@ env:
       PORTFOLIO_NAME: "Testing-Portfolio"
       PRODUCT_NAME: "TestingProduct"
       PRODUCT_TEMPLATE_FILE: "templates/product.yaml"
+      S3_BUCKET_PATH: skf-service-catalog-templates/vpc-catalog
+
 permissions:
   id-token: write   # This is required for requesting the JWT
   contents: read    # This is required for actions/checkout
@@ -28,7 +30,11 @@ jobs:
       with:
         role-to-assume: ${{ secrets.IAM_ROLE }}
         aws-region: ${{ env.AWS_REGION }}
-
+    
+    - name: Upload template to S3
+      run: |
+          aws s3 cp templates/product.yaml s3://${{ env.S3_BUCKET_PATH }}/product.yaml
+    
     - name: Create Portfolio
       id: create-portfolio
       run: |

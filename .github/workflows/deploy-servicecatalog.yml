@@ -51,7 +51,7 @@ jobs:
           --name "${{ env.PRODUCT_NAME }}" \
           --owner "GitHubCI" \
           --product-type "CLOUD_FORMATION_TEMPLATE" \
-          --provisioning-artifact-parameters "Name=InitialVersion,Type=CLOUD_FORMATION_TEMPLATE,Info={\"LoadTemplateFromURL\":\"https://skf-service-catalog-templates.s3.eu-central-1.amazonaws.com/vpc-catalog/product.yaml\"}" \
+          --provisioning-artifact-parameters "Name=InitialVersion,Type=CLOUD_FORMATION_TEMPLATE,Info={\"LoadTemplateFromURL\"=\"https://skf-service-catalog-templates.s3.eu-central-1.amazonaws.com/vpc-catalog/product.yaml\"}" \
           --query 'ProductViewDetail.ProductViewSummary.ProductId' \
           --output text)
         echo "PRODUCT_ID=$PRODUCT_ID" >> $GITHUB_ENV
